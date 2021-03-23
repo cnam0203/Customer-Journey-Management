@@ -44,6 +44,17 @@
                 <input name="numClusters" type="number" min=2 max=10/>
                 <br>
                 <br>
+                <label>Choose Mining Algorithm :</label>
+                <select name="miningAlgorithm" id="graphType" form="clusterForm">
+                    <option value="alpha">Alpha Miner with Petri Net</option>
+                    <option value="heuristic">Heuristic Miner with Petri Net</option>
+                    <option value="dfg-discovery-frequency">DFG-Discovery with Frequency</option>
+                    <option value="dfg-discovery-active-time">DFG-Discovery with Active time</option>
+                    <option value="inductive-miner-tree">Inductive Miner with Tree Graph</option>
+                    <option value="inductive-miner-petri">Inductive Miner with Petri Net</option>
+                </select>
+                <br>
+                <br>
                 <input type="submit" value="Submit" style="margin:auto; display:block"/>
             </form>
             <br/>

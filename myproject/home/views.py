@@ -101,6 +101,7 @@ def getCluster(request):
         numClusters = int(request.POST["numClusters"])
         algorithm = request.POST["algorithmMethod"]
         preprocess = request.POST["preprocessMethod"]
+        miningType = request.POST["miningAlgorithm"]
 
         if (request.POST["startDate"] != ''):
             startDate = request.POST["startDate"]
@@ -123,8 +124,8 @@ def getCluster(request):
             
         graphLinks = []
         for clustered_touchpoint in list_clustered_touchpoints:
-            graph = processMining(clustered_touchpoint, "dfg-discovery-frequency")
-            graphLink = saveGraph(graph, startDate, endDate, "dfg-discovery-frequency")
+            graph = processMining(clustered_touchpoint, miningType)
+            graphLink = saveGraph(graph, startDate, endDate, miningType)
             graphLinks.append(graphLink)
 
         return render(request, "home/cluster-journey.html", {"graphLinks": graphLinks})
