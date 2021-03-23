@@ -1,0 +1,27 @@
+{% extends "./base-home.html" %}
+{% block content %}
+    <body>
+        <div style="width: 100%;text-align:center">
+            <h1>Customer Experience Management</h1>
+            <h2>IMPORT DATA</h2>
+            <br/>
+            <br/>
+            <label>UPLOAD CSV/JSON FILE: </label>
+            <input type="file" id="upload-csv" accept=".csv, .json" onchange="importFile();"/>
+            <br/>
+            <br/>
+            <input type="submit" value='Import' id="submit-file" style="display:none" onclick="submitData();"/>
+        </div>
+            <br/>
+            <br/>
+        <div id="file-container">
+            <div style="overflow-x:auto;">
+                <table id="tbl-csv-data" style="margin:auto">
+                </table>
+            </div>
+        </div>
+        {% load static %}  
+        <script src="{% static '/js/papaparse.min.js' %}" type="text/javascript"></script>
+        <script src="{% static '/js/index.js' %}" type="text/javascript"></script> 
+    </body>
+{% endblock %}

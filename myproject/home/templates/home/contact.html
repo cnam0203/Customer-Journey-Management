@@ -1,0 +1,72 @@
+<!-- <!doctype html>
+<html>
+<head>
+    <title>Coding for Enttepreneur</title>
+</head>
+<body> 
+    {% load static %}  
+    <script src="{% static '/js/index.js' %}" type="text/javascript"></script>
+   <form action="/home/getContact" method="post">
+        {% csrf_token %}
+        {{ cf.as_p }}
+        <input type="submit">
+    </form>
+   <form>
+        <input type="file" id="GetFile" onChange="onCheckFileHeader();" accept=".csv,.json" />
+    </form>
+</body>
+</html>  -->
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Read CSV</title>
+    {% load static %}
+	<script type="text/javascript" src="{% static '/js/papaparse.min.js' %}"></script>
+</head>
+<body>
+	<input type="file" id="upload-csv" accept=".csv">
+	<button id="btn-upload-csv">Read CSV</button>
+	<table id="tbl-data">
+		
+	</table>
+	<script type="text/javascript">
+		let btn_upload = document.getElementById('btn-upload-csv').addEventListener('click', ()=> {
+
+			Papa.parse(document.getElementById('upload-csv').files[0], {
+				download: true,
+				header: true,
+				complete: function(results) {
+                    console.log(results.meta.fields)
+                    
+					// results.data.map((data, index)=> {
+                    //     let table = document.getElementById('tbl-data');
+                    //     generateTableRows(table, data);
+					// }); 
+				}
+			});
+		});
+
+		function generateTableHead(table, data) {
+			// let thead = table.createTHead();
+			// let row = thead.insertRow();
+			// for(let key of Object.keys(data)) {
+            //     console.log(key);
+            //     let th = document.createElement('th');
+			// 	let text = document.createTextNode(key);
+			// 	th.appendChild(text);
+			// 	row.appendChild(th);
+			// }
+		}
+
+		function generateTableRows(table, data) {
+			// let newRow = table.insertRow(-1);
+			// for(let key of Object.keys(data)) {
+			// 	let newCell = newRow.insertCell();
+			// 	let newText = document.createTextNode(data[key]);
+			// 	newCell.appendChild(newText);
+            // }
+		}
+	</script>
+</body>
+
+</html>

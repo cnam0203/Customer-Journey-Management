@@ -1,0 +1,49 @@
+{% extends "./base-home.html" %}
+{% block content %}
+    <body>
+        {% load static %}  
+        <script src="{% static '/js/papaparse.min.js' %}" type="text/javascript"></script>
+        <script src="{% static '/js/index.js' %}" type="text/javascript"></script> 
+        <style>
+            label {
+                display: inline-block;
+                width: 200px;
+                text-align: right;
+            }​
+        </style> 
+        <div style="width: 100%;text-align: center">
+            <h1>Customer Experience Management</h1>
+            <h2>VISUALIZE PROCESS MODEL GRAPH</h2>
+            <br/>
+            <br/>
+            <form action="/admin/cjx/get-graph" method="post" name="graphForm" onsubmit="return validateGraphForm()" id="graphForm" style="display: inline-block; text-align: left"/>
+                {% csrf_token %}
+                <label>From &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp: </label>
+                <input name="startDate" type="date" min='2000-1-1'/>
+                <br>
+                <label>To &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp: </label>
+                <input name="endDate" type="date" min='2000-1-1'/>
+                <br>
+                <label>Choose Mining Algorithm :</label>
+                <select name="algorithm" id="graphType" form="graphForm">
+                    <option value="alpha">Alpha Miner with Petri Net</option>
+                    <option value="heuristic">Heuristic Miner with Petri Net</option>
+                    <option value="dfg-discovery-frequency">DFG-Discovery with Frequency</option>
+                    <option value="dfg-discovery-active-time">DFG-Discovery with Active time</option>
+                    <option value="inductive-miner-tree">Inductive Miner with Tree Graph</option>
+                    <option value="inductive-miner-petri">Inductive Miner with Petri Net</option>
+                </select>
+                <br>
+                <br>
+                <input type="submit" value="Submit" style="margin:auto; display:block"/>
+            </form>
+            <br/>
+            <br/>
+            {% if imgSrc != "" %}
+                <div style="overflow-x:auto;">  
+                    <img src="{% static imgSrc %}" alt="My image">
+                </div>
+            {% endif %}
+        </div>
+    </body>
+{% endblock %}
