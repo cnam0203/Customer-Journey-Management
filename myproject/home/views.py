@@ -4,12 +4,17 @@ from django.http import JsonResponse
 from django.contrib.auth.decorators import user_passes_test
 from .forms import formContact
 from .models import Touchpoint
-from .models import Graph
+from .models import ProcessGraph
+from .models import ClusterGraph
+from .models import Cluster
 from datetime import datetime
+from sklearn.cluster import KMeans
 import json
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
+import joblib
+from sklearn import preprocessing as sk_preprocessing
+# from tensorflow.keras import preprocessing as keras_preprocessing
 
 
 from pm4py.objects.conversion.log import converter as log_converter
@@ -26,7 +31,6 @@ from pm4py.visualization.petrinet import visualizer as pn_visualizer
 from pm4py.visualization.process_tree import visualizer as pt_visualizer
 from pm4py.visualization.heuristics_net import visualizer as hn_visualizer
 from pm4py.visualization.dfg import visualizer as dfg_visualization
-
 
 
 
@@ -88,7 +92,7 @@ def getGraph(request):
         touchpoints = list(touchpoints)
 
         graph = processMining(touchpoints, type)
-        graphLink = saveGraph(graph, startDate, endDate, type)
+        graphLink = saveProcessGraph(graph, startDate, endDate, type)
         return render(request, "home/visualize-graph.html", {"imgSrc": graphLink})
 
 
@@ -114,21 +118,33 @@ def getCluster(request):
         list_action_types = get_list_action_types(touchpoints)
         x_data = preprocessTouchpoint(user_journeys, list_action_types, preprocess)
 
-        clusters, predict_journeys = cluster_touchpoints(x_data, algorithm, numClusters)
+        model = cluster_touchpoints(x_data, algorithm, numClusters)
+        newClusterID, path = saveClusterModel(startDate=startDate, endDate=endDate, algorithm=algorithm, preprocess=preprocess, numClusters=numClusters, clusterModel=model)
+
+        loaded_model = load_model(path)
+        clusters = loaded_model.cluster_centers_
+        predict_journeys = loaded_model.predict(x_data)
+
         list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
 
         for index, user_id in enumerate(user_ids):
             cluster_index = predict_journeys[index]
             user_touchpoints = [touchpoint for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
             list_clustered_touchpoints[cluster_index] = list_clustered_touchpoints[cluster_index] + user_touchpoints
+            print(cluster_index, ":", [touchpoint["action_type"] for touchpoint in user_touchpoints])
+            print("\n")
             
         graphLinks = []
-        for clustered_touchpoint in list_clustered_touchpoints:
+        for index, clustered_touchpoint in enumerate(list_clustered_touchpoints):
             graph = processMining(clustered_touchpoint, miningType)
-            graphLink = saveGraph(graph, startDate, endDate, miningType)
+            graphLink = saveClusterGraph(graph, newClusterID, index, miningType)
             graphLinks.append(graphLink)
 
         return render(request, "home/cluster-journey.html", {"graphLinks": graphLinks})
+
+
+def load_model(path):
+    return joblib.load(path)
 
 
 @user_passes_test(lambda user: user.is_staff)
@@ -163,17 +179,14 @@ def create_journey(touchpoints):
 
 
 def cluster_touchpoints(x_data, algorithm, numClusters):
-    clusters = np.array([])
-    predict_journeys = np.array([])
     if (algorithm == "kmeans"):
-        clusters, predict_journeys = kmeans_clustering(x_data, numClusters)
-    return clusters, predict_journeys
+        model = kmeans_clustering(x_data, numClusters)
+    return model
 
 
 def kmeans_clustering(x_data, numClusters):
     kmeans = KMeans(n_clusters=numClusters, random_state=0).fit(x_data)
-    predict_journeys = kmeans.predict(x_data)
-    return kmeans.cluster_centers_, predict_journeys
+    return kmeans
 
 
 def preprocessTouchpoint(user_journeys, list_action_types, preprocess):
@@ -195,8 +208,23 @@ def preprocess_bag_of_activities(user_journeys, list_action_types):
     return list_touchpoint_vectors
 
 
-def preprocess_sequence_vector(touchpoints, list_action_types):
-    return None
+def preprocess_sequence_vector(user_journeys, list_action_types):
+    list_touchpoint_vectors = []
+    label = sk_preprocessing.LabelEncoder()
+    label.fit(list_action_types)
+
+    for journey in user_journeys:
+        label_transform = []
+        for value in label.transform(journey).tolist():
+            label_transform.append(value+1)
+        list_touchpoint_vectors.append(label_transform)
+
+    max_len = max([len(x) for x in list_touchpoint_vectors])
+    x_data = [np.pad(x, (0, max_len - len(x)), 'constant').tolist() for x in list_touchpoint_vectors]
+    return x_data
+    
+
+
 
 
 def processMining(touchpoints, type):
@@ -266,16 +294,41 @@ def InductiveMinerPetriNet(log):
                            log=log)
     return gviz
 
-def saveGraph(gviz, startDate, endDate, type):
-    filename = '/graph/' + str(datetime.now().timestamp()) + ".png"
+def saveProcessGraph(gviz, startDate, endDate, type):
+    filename = '/processGraph/' + str(datetime.now().timestamp()) + ".png"
     path = "home/static" + filename
     staticPath = 'http://localhost:8000/static' + filename 
     pn_visualizer.save(gviz, path)
-    newGraph = Graph.objects.create(runDate=datetime.now(), startDate=startDate, endDate=endDate, type=type, link=staticPath)
+    newGraph = ProcessGraph.objects.create(runDate=datetime.now(), startDate=startDate, endDate=endDate, type=type, link=staticPath)
     newGraph.save()
 
     return filename
-    
+
+
+def saveClusterGraph(gviz, clusterID, clusterNumber, type, clusterName=None):
+    filename = '/clusterGraph/' + str(datetime.now().timestamp()) + ".png"
+    path = "home/static" + filename
+    staticPath = 'http://localhost:8000/static' + filename 
+    pn_visualizer.save(gviz, path)
+    newGraph = ClusterGraph.objects.create(clusterID=clusterID, clusterNumber=clusterNumber, clusterName=clusterName, type=type, link=staticPath)
+    newGraph.save()
+
+    return filename
+
+def saveClusterModel(startDate, endDate, algorithm, preprocess, numClusters,  clusterModel, preprocessModel=None, accuracy=0, error=0):
+    filename = '/clusterModel/' + str(datetime.now().timestamp()) + ".sav"
+    path = "home/static" + filename
+    joblib.dump(clusterModel, path)
+
+    newModel = Cluster.objects.create(startDate=startDate, 
+                                endDate=endDate, 
+                                algorithm=algorithm, 
+                                preprocessing=preprocess, 
+                                numberClusters=numClusters, 
+                                clusterModelFile=path, preprocessingModelFile='', accuracy=accuracy, error=error)
+
+    newModel.save()
+    return newModel.id, path
 
 
 

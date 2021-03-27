@@ -96,6 +96,7 @@ function generateJSONData(results) {
                 }
                 return true;
             } 
+            return true;
         });
 
         if (!checkAvailable) {

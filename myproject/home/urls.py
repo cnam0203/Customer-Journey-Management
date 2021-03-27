@@ -1,5 +1,11 @@
 from django.urls import path
 from . import views
+from django.contrib import admin
+
+admin.site.site_header = 'Organization Administration'                    # default: "Django Administration"
+admin.site.index_title = 'Customer Journey Management'                 # default: "Site administration"
+admin.site.site_title = 'Customer Journey Management' # default: "Django site admin"
+
 
 urlpatterns = [
     path('', views.home),
