@@ -7,12 +7,14 @@ from .models import Touchpoint
 from .models import ProcessGraph
 from .models import ClusterGraph
 from .models import Cluster
+from .models import ClusteredUser
 from datetime import datetime
 from sklearn.cluster import KMeans
 import json
 import pandas as pd
 import numpy as np
 import joblib
+from kmodes.kmodes import KModes
 from sklearn import preprocessing as sk_preprocessing
 # from tensorflow.keras import preprocessing as keras_preprocessing
 
@@ -79,18 +81,96 @@ def visualizeGraph(request):
 
 
 @user_passes_test(lambda user: user.is_staff)
+def getClusterUserPage(request, id):
+    return render(request, "home/cluster-user.html", {"clusterID": id, "clusterSuccess": False})
+
+
+@user_passes_test(lambda user: user.is_staff)
+def clusterUser(request, id):
+    if (request.method == "POST"):
+        clusterID = id
+        startDate, endDate = getPeriod(request)
+        touchpoints = getListTouchpoints(startDate, endDate)
+        
+        clusterInfo = getClusterInfo(id)
+        clusterGraphs = getClusterGraphs(id)
+
+        algorithm = clusterInfo[0]["algorithm"]
+        preprocess = clusterInfo[0]["preprocessing"]
+        clusterModelFile = clusterInfo[0]["clusterModelFile"]
+
+        user_journeys, user_ids = create_journey(touchpoints)
+        list_action_types = get_list_action_types(touchpoints)
+        x_data = preprocessTouchpoint(user_journeys, list_action_types, preprocess)
+
+        loaded_model = load_model(clusterModelFile)
+
+        if (algorithm == "kmeans"):
+            clusters = loaded_model.cluster_centers_
+        elif (algorithm == "kmodes"):
+            clusters = loaded_model.cluster_centroids_
+
+        predict_journeys = loaded_model.predict(x_data)
+
+        list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
+
+        for index, user_id in enumerate(user_ids):
+            cluster_index = predict_journeys[index]
+            user_touchpoints = [touchpoint["action_type"] for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
+
+            graph_index = [index for index, clusterGraph in enumerate(clusterGraphs) if clusterGraph["clusterNumber"] == cluster_index][0]
+            cluster_name = clusterGraphs[graph_index]["clusterName"]
+            cluster_link = clusterGraphs[graph_index]["link"]
+            saveClusteredUser(user_id, startDate, endDate, clusterID, user_touchpoints, cluster_index, cluster_name, cluster_link)
+
+        return render(request, "home/cluster-user.html", {"clusterID": clusterID, "clusterSuccess": True})
+
+
+def saveClusteredUser(userID, startJourneyDate, endJourneyDate, clusterID, journey, clusterNumber, clusterName, clusterGraphLink):
+    newClusteredUser = ClusteredUser.objects.create(userID=userID, 
+                        fromDate=startJourneyDate, 
+                        toDate=endJourneyDate, 
+                        clusterID=clusterID,
+                        journey=journey, 
+                        clusterNumber=clusterNumber, 
+                        clusterName=clusterName, 
+                        clusterGraphLink=clusterGraphLink)
+    newClusteredUser.save()
+
+def getClusterInfo(clusterId):
+    clusterInfo = Cluster.objects.filter(id=clusterId).values('id', 'algorithm', 'preprocessing', 'preprocessingModelFile', 'clusterModelFile')
+    return list(clusterInfo)
+
+
+def getClusterGraphs(clusterId):
+    clusterGraphs = ClusterGraph.objects.filter(clusterID=clusterId).values('id', 'clusterNumber', 'clusterName', 'link')
+    return list(clusterGraphs)
+
+
+def getPeriod(request):
+    startDate = datetime(2000, 1, 1)
+    endDate = datetime.now()
+    if (request.POST["startDate"] != ''):
+        startDate = request.POST["startDate"]
+    if (request.POST["endDate"] != ''):
+        endDate = request.POST["endDate"]
+
+    return startDate, endDate
+
+def getListTouchpoints(startDate, endDate):
+    touchpoints = Touchpoint.objects.filter(visit_time__range=[startDate, endDate]).values('user_id', 'visit_time', 'active_time', 'action_type')
+    touchpoints = list(touchpoints)
+
+    return touchpoints
+
+
+@user_passes_test(lambda user: user.is_staff)
 def getGraph(request):
     if (request.method == "POST"):
-        startDate = datetime(2000, 1, 1)
-        endDate = datetime.now()
+        startDate, endDate = getPeriod(request)
+        touchpoints = getListTouchpoints(startDate, endDate)
         type = request.POST["algorithm"]
-        if (request.POST["startDate"] != ''):
-            startDate = request.POST["startDate"]
-        if (request.POST["endDate"] != ''):
-            endDate = request.POST["endDate"]
-        touchpoints = Touchpoint.objects.filter(visit_time__range=[startDate, endDate]).values('user_id', 'visit_time', 'active_time', 'action_type')
-        touchpoints = list(touchpoints)
-
+        
         graph = processMining(touchpoints, type)
         graphLink = saveProcessGraph(graph, startDate, endDate, type)
         return render(request, "home/visualize-graph.html", {"imgSrc": graphLink})
@@ -99,21 +179,13 @@ def getGraph(request):
 @user_passes_test(lambda user: user.is_staff)
 def getCluster(request):
     if (request.method == "POST"):
-        startDate = datetime(2000, 1, 1)
-        endDate = datetime.now()
+        startDate, endDate = getPeriod(request)
+        touchpoints = getListTouchpoints(startDate, endDate)
 
         numClusters = int(request.POST["numClusters"])
         algorithm = request.POST["algorithmMethod"]
         preprocess = request.POST["preprocessMethod"]
         miningType = request.POST["miningAlgorithm"]
-
-        if (request.POST["startDate"] != ''):
-            startDate = request.POST["startDate"]
-        if (request.POST["endDate"] != ''):
-            endDate = request.POST["endDate"]
-        touchpoints = Touchpoint.objects.filter(visit_time__range=[startDate, endDate]).values('user_id', 'visit_time', 'active_time', 'action_type')
-        touchpoints = list(touchpoints)
-
         user_journeys, user_ids = create_journey(touchpoints)
         list_action_types = get_list_action_types(touchpoints)
         x_data = preprocessTouchpoint(user_journeys, list_action_types, preprocess)
@@ -122,7 +194,12 @@ def getCluster(request):
         newClusterID, path = saveClusterModel(startDate=startDate, endDate=endDate, algorithm=algorithm, preprocess=preprocess, numClusters=numClusters, clusterModel=model)
 
         loaded_model = load_model(path)
-        clusters = loaded_model.cluster_centers_
+
+        if (algorithm == "kmeans"):
+            clusters = loaded_model.cluster_centers_
+        elif (algorithm == "kmodes"):
+            clusters = loaded_model.cluster_centroids_
+
         predict_journeys = loaded_model.predict(x_data)
 
         list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
@@ -181,12 +258,19 @@ def create_journey(touchpoints):
 def cluster_touchpoints(x_data, algorithm, numClusters):
     if (algorithm == "kmeans"):
         model = kmeans_clustering(x_data, numClusters)
+    elif (algorithm == "kmodes"):
+        model = kmodes_clustering(x_data, numClusters)
     return model
 
 
 def kmeans_clustering(x_data, numClusters):
     kmeans = KMeans(n_clusters=numClusters, random_state=0).fit(x_data)
     return kmeans
+
+
+def kmodes_clustering(x_data, numClusters):
+    kmodes = KModes(n_clusters=numClusters).fit(x_data)
+    return kmodes
 
 
 def preprocessTouchpoint(user_journeys, list_action_types, preprocess):

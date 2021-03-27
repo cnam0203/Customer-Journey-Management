@@ -19,4 +19,6 @@ urlpatterns = [
     path('upload-file', views.uploadFile),
     path('get-graph', views.getGraph),
     path('get-cluster', views.getCluster),
+    path('get-cluster-user-page/<int:id>', views.getClusterUserPage),
+    path('cluster-user/<int:id>', views.clusterUser)
 ]

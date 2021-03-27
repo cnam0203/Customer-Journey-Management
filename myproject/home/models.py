@@ -155,7 +155,7 @@ class ClusterGraph(models.Model):
     id = models.AutoField(primary_key=True)
     clusterID = models.IntegerField(blank=True, null=True)
     clusterNumber = models.IntegerField(blank=True, null=True)
-    clusterName = models.CharField(max_length=300, blank=True, null=True)
+    clusterName = models.CharField(max_length=300, blank=True, default="undefined")
     type = models.CharField(max_length=300, blank=True, null=True)
     link = models.CharField(max_length=300, blank=True, null=True)
 
@@ -167,4 +167,15 @@ class ProcessGraph(models.Model):
     runDate = models.DateTimeField()
     type = models.CharField(max_length=300, blank=True, null=True)
     link = models.CharField(max_length=300, blank=True, null=True)
+
+class ClusteredUser(models.Model):
+    userID = models.BigIntegerField(blank=True, null=True)
+    clusterDate = models.DateTimeField(auto_now=True)
+    fromDate = models.DateField()
+    toDate = models.DateField()
+    journey = models.JSONField()
+    clusterID = models.IntegerField(blank=True, null=True)
+    clusterNumber = models.IntegerField(blank=True, null=True)
+    clusterName = models.CharField(max_length=300, blank=True, null=True)
+    clusterGraphLink = models.CharField(max_length=300, blank=True, null=True)
 

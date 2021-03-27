@@ -15,6 +15,7 @@ from .models import User
 from .models import Cluster
 from .models import ClusterGraph
 from .models import ProcessGraph
+from .models import ClusteredUser
 from django.utils.safestring import mark_safe
 from django.utils.html import format_html
 
@@ -65,8 +66,21 @@ admin.site.register(ClusterGraph, ClusterGraphAdmin)
 
 class ClusterAdmin(admin.ModelAdmin):
     search_fields = ("startDate", "endDate", "runDate", "algorithm", "preprocessing", "numberClusters")
-    list_display = ("id", "runDate", "algorithm", "preprocessing", "numberClusters", "accuracy", "error")
+    list_display = ("id", "runDate", "algorithm", "preprocessing", "numberClusters", "accuracy", "error", "cluster_now")
+    def cluster_now(self, obj):
+        link = "/admin/cjx/get-cluster-user-page/" + str(obj.id)
+        return format_html("<a href='{}'>{}</a>", link, "Cluster Now")
 admin.site.register(Cluster, ClusterAdmin)
+
+class ClusteredUserAdmin(admin.ModelAdmin):
+    search_fields = ("userId", "clusterDate", "clusterName")
+    list_display = ("userID", "clusterDate", "cluster_link", "fromDate", "toDate", "journey", "clusterName", "cluster_graph_link")
+    def cluster_link(self, obj):
+        link = "/admin/home/cluster/" + str(obj.clusterID)
+        return format_html("<a href='{}'>{}</a>", link, obj.clusterID)
+    def cluster_graph_link(self, obj):
+        return format_html("<a href='{}'>{}</a>", obj.clusterGraphLink, obj.clusterGraphLink)
+admin.site.register(ClusteredUser, ClusteredUserAdmin)
 
 
 class UserAdmin(admin.ModelAdmin):
