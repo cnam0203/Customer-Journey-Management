@@ -2,7 +2,6 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.contrib.auth.decorators import user_passes_test
-from .forms import formContact
 from .models import Touchpoint
 from .models import ProcessGraph
 from .models import ClusterGraph
@@ -10,12 +9,12 @@ from .models import Cluster
 from .models import ClusteredUser
 from datetime import datetime
 from sklearn.cluster import KMeans
+from kmodes.kmodes import KModes
+from sklearn import preprocessing as sk_preprocessing
 import json
 import pandas as pd
 import numpy as np
 import joblib
-from kmodes.kmodes import KModes
-from sklearn import preprocessing as sk_preprocessing
 # from tensorflow.keras import preprocessing as keras_preprocessing
 
 
@@ -35,20 +34,22 @@ from pm4py.visualization.heuristics_net import visualizer as hn_visualizer
 from pm4py.visualization.dfg import visualizer as dfg_visualization
 
 
-
 @user_passes_test(lambda user: user.is_staff)
 def private_place(request):
     return HttpResponse("Shhh, members only!", content_type="text/plain")
 
 # Create your views here.
 
+
 @user_passes_test(lambda user: user.is_staff)
 def home(request):
     return render(request, "home/index.html")
 
+
 @user_passes_test(lambda user: user.is_staff)
 def importData(request):
     return render(request, "home/import-data.html")
+
 
 @user_passes_test(lambda user: user.is_staff)
 def exportData(request):
@@ -91,7 +92,7 @@ def clusterUser(request, id):
         clusterID = id
         startDate, endDate = getPeriod(request)
         touchpoints = getListTouchpoints(startDate, endDate)
-        
+
         clusterInfo = getClusterInfo(id)
         clusterGraphs = getClusterGraphs(id)
 
@@ -101,8 +102,29 @@ def clusterUser(request, id):
 
         user_journeys, user_ids = create_journey(touchpoints)
         list_action_types = get_list_action_types(touchpoints)
-        x_data = preprocessTouchpoint(user_journeys, list_action_types, preprocess)
+        x_data = preprocessTouchpoint(
+            user_journeys, list_action_types, preprocess)
 
+        clusters, predict_journeys = predictJourneyCluster(algorithm, x_data, clusterModelFile)
+
+        list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
+
+        for index, user_id in enumerate(user_ids):
+            cluster_index = predict_journeys[index]
+            user_touchpoints = [touchpoint["action_type"]
+                                for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
+
+            graph_index = [index for index, clusterGraph in enumerate(
+                clusterGraphs) if clusterGraph["clusterNumber"] == cluster_index][0]
+            cluster_name = clusterGraphs[graph_index]["clusterName"]
+            cluster_link = clusterGraphs[graph_index]["link"]
+            saveClusteredUser(user_id, startDate, endDate, clusterID,
+                              user_touchpoints, cluster_index, cluster_name, cluster_link)
+
+        return render(request, "home/cluster-user.html", {"clusterID": clusterID, "clusterSuccess": True})
+
+
+def predictJourneyCluster(algorithm, x_data, clusterModelFile):
         loaded_model = load_model(clusterModelFile)
 
         if (algorithm == "kmeans"):
@@ -112,38 +134,30 @@ def clusterUser(request, id):
 
         predict_journeys = loaded_model.predict(x_data)
 
-        list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
-
-        for index, user_id in enumerate(user_ids):
-            cluster_index = predict_journeys[index]
-            user_touchpoints = [touchpoint["action_type"] for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
-
-            graph_index = [index for index, clusterGraph in enumerate(clusterGraphs) if clusterGraph["clusterNumber"] == cluster_index][0]
-            cluster_name = clusterGraphs[graph_index]["clusterName"]
-            cluster_link = clusterGraphs[graph_index]["link"]
-            saveClusteredUser(user_id, startDate, endDate, clusterID, user_touchpoints, cluster_index, cluster_name, cluster_link)
-
-        return render(request, "home/cluster-user.html", {"clusterID": clusterID, "clusterSuccess": True})
+        return clusters, predict_journeys
 
 
 def saveClusteredUser(userID, startJourneyDate, endJourneyDate, clusterID, journey, clusterNumber, clusterName, clusterGraphLink):
-    newClusteredUser = ClusteredUser.objects.create(userID=userID, 
-                        fromDate=startJourneyDate, 
-                        toDate=endJourneyDate, 
-                        clusterID=clusterID,
-                        journey=journey, 
-                        clusterNumber=clusterNumber, 
-                        clusterName=clusterName, 
-                        clusterGraphLink=clusterGraphLink)
+    newClusteredUser = ClusteredUser.objects.create(userID=userID,
+                                                    fromDate=startJourneyDate,
+                                                    toDate=endJourneyDate,
+                                                    clusterID=clusterID,
+                                                    journey=journey,
+                                                    clusterNumber=clusterNumber,
+                                                    clusterName=clusterName,
+                                                    clusterGraphLink=clusterGraphLink)
     newClusteredUser.save()
 
+
 def getClusterInfo(clusterId):
-    clusterInfo = Cluster.objects.filter(id=clusterId).values('id', 'algorithm', 'preprocessing', 'preprocessingModelFile', 'clusterModelFile')
+    clusterInfo = Cluster.objects.filter(id=clusterId).values(
+        'id', 'algorithm', 'preprocessing', 'preprocessingModelFile', 'clusterModelFile')
     return list(clusterInfo)
 
 
 def getClusterGraphs(clusterId):
-    clusterGraphs = ClusterGraph.objects.filter(clusterID=clusterId).values('id', 'clusterNumber', 'clusterName', 'link')
+    clusterGraphs = ClusterGraph.objects.filter(clusterID=clusterId).values(
+        'id', 'clusterNumber', 'clusterName', 'link')
     return list(clusterGraphs)
 
 
@@ -157,8 +171,10 @@ def getPeriod(request):
 
     return startDate, endDate
 
+
 def getListTouchpoints(startDate, endDate):
-    touchpoints = Touchpoint.objects.filter(visit_time__range=[startDate, endDate]).values('user_id', 'visit_time', 'active_time', 'action_type')
+    touchpoints = Touchpoint.objects.filter(visit_time__range=[startDate, endDate]).values(
+        'user_id', 'visit_time', 'active_time', 'action_type')
     touchpoints = list(touchpoints)
 
     return touchpoints
@@ -170,7 +186,7 @@ def getGraph(request):
         startDate, endDate = getPeriod(request)
         touchpoints = getListTouchpoints(startDate, endDate)
         type = request.POST["algorithm"]
-        
+
         graph = processMining(touchpoints, type)
         graphLink = saveProcessGraph(graph, startDate, endDate, type)
         return render(request, "home/visualize-graph.html", {"imgSrc": graphLink})
@@ -188,33 +204,31 @@ def getCluster(request):
         miningType = request.POST["miningAlgorithm"]
         user_journeys, user_ids = create_journey(touchpoints)
         list_action_types = get_list_action_types(touchpoints)
-        x_data = preprocessTouchpoint(user_journeys, list_action_types, preprocess)
+        x_data = preprocessTouchpoint(
+            user_journeys, list_action_types, preprocess)
 
         model = cluster_touchpoints(x_data, algorithm, numClusters)
-        newClusterID, path = saveClusterModel(startDate=startDate, endDate=endDate, algorithm=algorithm, preprocess=preprocess, numClusters=numClusters, clusterModel=model)
+        newClusterID, path = saveClusterModel(
+            startDate=startDate, endDate=endDate, algorithm=algorithm, preprocess=preprocess, numClusters=numClusters, clusterModel=model)
 
-        loaded_model = load_model(path)
-
-        if (algorithm == "kmeans"):
-            clusters = loaded_model.cluster_centers_
-        elif (algorithm == "kmodes"):
-            clusters = loaded_model.cluster_centroids_
-
-        predict_journeys = loaded_model.predict(x_data)
+        clusters, predict_journeys = predictJourneyCluster(algorithm, x_data, path)
 
         list_clustered_touchpoints = [[] for i in range(0, len(clusters))]
 
         for index, user_id in enumerate(user_ids):
             cluster_index = predict_journeys[index]
-            user_touchpoints = [touchpoint for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
+            user_touchpoints = [
+                touchpoint for touchpoint in touchpoints if touchpoint["user_id"] == user_id]
             list_clustered_touchpoints[cluster_index] = list_clustered_touchpoints[cluster_index] + user_touchpoints
-            print(cluster_index, ":", [touchpoint["action_type"] for touchpoint in user_touchpoints])
+            print(cluster_index, ":", [touchpoint["action_type"]
+                  for touchpoint in user_touchpoints])
             print("\n")
-            
+
         graphLinks = []
         for index, clustered_touchpoint in enumerate(list_clustered_touchpoints):
             graph = processMining(clustered_touchpoint, miningType)
-            graphLink = saveClusterGraph(graph, newClusterID, index, miningType)
+            graphLink = saveClusterGraph(
+                graph, newClusterID, index, miningType)
             graphLinks.append(graphLink)
 
         return render(request, "home/cluster-journey.html", {"graphLinks": graphLinks})
@@ -242,13 +256,16 @@ def get_list_action_types(touchpoints):
     list_action_types = df["action_type"].unique()
     return list_action_types
 
+
 def create_journey(touchpoints):
     df = pd.DataFrame(touchpoints)
     list_journeys = []
     list_userID = df["user_id"].unique()
     for userID in list_userID:
-        user_journey = df.loc[df["user_id"]==userID, ["action_type", "visit_time"]]
-        user_journey = user_journey.sort_values(['visit_time'], ascending=[True])
+        user_journey = df.loc[df["user_id"] ==
+                              userID, ["action_type", "visit_time"]]
+        user_journey = user_journey.sort_values(
+            ['visit_time'], ascending=[True])
         user_journey = user_journey["action_type"].tolist()
         list_journeys.append(user_journey)
 
@@ -276,10 +293,13 @@ def kmodes_clustering(x_data, numClusters):
 def preprocessTouchpoint(user_journeys, list_action_types, preprocess):
     preprocessed_touchpoints = np.array([])
     if (preprocess == "bagOfActivities"):
-        preprocessed_touchpoints = preprocess_bag_of_activities(user_journeys, list_action_types)
+        preprocessed_touchpoints = preprocess_bag_of_activities(
+            user_journeys, list_action_types)
     if (preprocess == "sequenceVector"):
-        preprocessed_touchpoints = preprocess_sequence_vector(user_journeys, list_action_types)
+        preprocessed_touchpoints = preprocess_sequence_vector(
+            user_journeys, list_action_types)
     return preprocessed_touchpoints
+
 
 def preprocess_bag_of_activities(user_journeys, list_action_types):
     list_touchpoint_vectors = []
@@ -304,23 +324,22 @@ def preprocess_sequence_vector(user_journeys, list_action_types):
         list_touchpoint_vectors.append(label_transform)
 
     max_len = max([len(x) for x in list_touchpoint_vectors])
-    x_data = [np.pad(x, (0, max_len - len(x)), 'constant').tolist() for x in list_touchpoint_vectors]
+    x_data = [np.pad(x, (0, max_len - len(x)), 'constant').tolist()
+              for x in list_touchpoint_vectors]
     return x_data
-    
-
-
 
 
 def processMining(touchpoints, type):
     df = pd.DataFrame(touchpoints)
     df["visit_time"] = pd.to_datetime(df['visit_time'], unit='s')
     df = dataframe_utils.convert_timestamp_columns_in_df(df)
-    df.rename(columns={'user_id':'case:concept:name', 'action_type':'concept:name', 'visit_time':'time:timestamp'}, inplace=True)
-    df = df.sort_values(by=['case:concept:name','time:timestamp'])
+    df.rename(columns={'user_id': 'case:concept:name',
+              'action_type': 'concept:name', 'visit_time': 'time:timestamp'}, inplace=True)
+    df = df.sort_values(by=['case:concept:name', 'time:timestamp'])
     log = log_converter.apply(df)
-    
-    gviz = None 
-    
+
+    gviz = None
+
     if type == "alpha":
         gviz = alphaMiner(log)
     elif type == "heuristic":
@@ -333,8 +352,9 @@ def processMining(touchpoints, type):
         gviz = InductiveMinerTree(log)
     elif type == "inductive-miner-petri":
         gviz = InductiveMinerPetriNet(log)
-    
+
     return gviz
+
 
 def alphaMiner(log):
     # alpha miner
@@ -342,23 +362,29 @@ def alphaMiner(log):
     gviz = pn_visualizer.apply(net, initial_marking, final_marking)
     return gviz
 
+
 def heuristicMiner(log):
     # heuristic miner
     net, initial_marking, final_marking = heuristics_miner.apply(log)
     gviz = pn_visualizer.apply(net, initial_marking, final_marking)
     return gviz
 
+
 def dfgDiscoveryActiveTime(log):
     # creatig the graph from log
     dfg = dfg_discovery.apply(log, variant=dfg_discovery.Variants.PERFORMANCE)
-    gviz = dfg_visualization.apply(dfg, log=log, variant=dfg_visualization.Variants.PERFORMANCE)
+    gviz = dfg_visualization.apply(
+        dfg, log=log, variant=dfg_visualization.Variants.PERFORMANCE)
     return gviz
+
 
 def dfgDiscoveryFrequency(log):
     # creatig the graph from log
     dfg = dfg_discovery.apply(log)
-    gviz = dfg_visualization.apply(dfg, log=log, variant=dfg_visualization.Variants.FREQUENCY)
+    gviz = dfg_visualization.apply(
+        dfg, log=log, variant=dfg_visualization.Variants.FREQUENCY)
     return gviz
+
 
 def InductiveMinerTree(log):
     # create the process tree
@@ -366,24 +392,28 @@ def InductiveMinerTree(log):
     gviz = pt_visualizer.apply(tree)
     return gviz
 
+
 def InductiveMinerPetriNet(log):
     # create the process tree
     tree = inductive_miner.apply_tree(log)
     # convert the process tree to a petri net
     net, initial_marking, final_marking = pt_converter.apply(tree)
-    parameters = {pn_visualizer.Variants.FREQUENCY.value.Parameters.FORMAT: "png"}
-    gviz = pn_visualizer.apply(net, initial_marking, final_marking, 
-                           parameters=parameters, 
-                           variant=pn_visualizer.Variants.FREQUENCY, 
-                           log=log)
+    parameters = {
+        pn_visualizer.Variants.FREQUENCY.value.Parameters.FORMAT: "png"}
+    gviz = pn_visualizer.apply(net, initial_marking, final_marking,
+                               parameters=parameters,
+                               variant=pn_visualizer.Variants.FREQUENCY,
+                               log=log)
     return gviz
+
 
 def saveProcessGraph(gviz, startDate, endDate, type):
     filename = '/processGraph/' + str(datetime.now().timestamp()) + ".png"
     path = "home/static" + filename
-    staticPath = 'http://localhost:8000/static' + filename 
+    staticPath = 'http://localhost:8000/static' + filename
     pn_visualizer.save(gviz, path)
-    newGraph = ProcessGraph.objects.create(runDate=datetime.now(), startDate=startDate, endDate=endDate, type=type, link=staticPath)
+    newGraph = ProcessGraph.objects.create(runDate=datetime.now(
+    ), startDate=startDate, endDate=endDate, type=type, link=staticPath)
     newGraph.save()
 
     return filename
@@ -392,35 +422,26 @@ def saveProcessGraph(gviz, startDate, endDate, type):
 def saveClusterGraph(gviz, clusterID, clusterNumber, type, clusterName=None):
     filename = '/clusterGraph/' + str(datetime.now().timestamp()) + ".png"
     path = "home/static" + filename
-    staticPath = 'http://localhost:8000/static' + filename 
+    staticPath = 'http://localhost:8000/static' + filename
     pn_visualizer.save(gviz, path)
-    newGraph = ClusterGraph.objects.create(clusterID=clusterID, clusterNumber=clusterNumber, clusterName=clusterName, type=type, link=staticPath)
+    newGraph = ClusterGraph.objects.create(
+        clusterID=clusterID, clusterNumber=clusterNumber, clusterName=clusterName, type=type, link=staticPath)
     newGraph.save()
 
     return filename
+
 
 def saveClusterModel(startDate, endDate, algorithm, preprocess, numClusters,  clusterModel, preprocessModel=None, accuracy=0, error=0):
     filename = '/clusterModel/' + str(datetime.now().timestamp()) + ".sav"
     path = "home/static" + filename
     joblib.dump(clusterModel, path)
 
-    newModel = Cluster.objects.create(startDate=startDate, 
-                                endDate=endDate, 
-                                algorithm=algorithm, 
-                                preprocessing=preprocess, 
-                                numberClusters=numClusters, 
-                                clusterModelFile=path, preprocessingModelFile='', accuracy=accuracy, error=error)
+    newModel = Cluster.objects.create(startDate=startDate,
+                                      endDate=endDate,
+                                      algorithm=algorithm,
+                                      preprocessing=preprocess,
+                                      numberClusters=numClusters,
+                                      clusterModelFile=path, preprocessingModelFile='', accuracy=accuracy, error=error)
 
     newModel.save()
     return newModel.id, path
-
-
-
-
-
-
-
-    
-
-
-
