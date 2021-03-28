@@ -3,6 +3,12 @@
         {% load static %}  
         <script src="{% static '/js/papaparse.min.js' %}" type="text/javascript"></script>
         <script src="{% static '/js/index.js' %}" type="text/javascript"></script> 
+        <script>
+            var result = "{{result}}";
+            if (result) {
+                alert(result)
+            }
+        </script>
         <style>
             label {
                 display: inline-block;
@@ -38,7 +44,7 @@
             </form>
             <br/>
             <br/>
-            {% if imgSrc != "" %}
+            {% if imgSrc %}
                 <div style="overflow-x:auto;">  
                     <img src="{% static imgSrc %}" alt="My image">
                 </div>

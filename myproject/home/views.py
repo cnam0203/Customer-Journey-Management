@@ -93,6 +93,9 @@ def clusterUser(request, id):
         startDate, endDate = getPeriod(request)
         touchpoints = getListTouchpoints(startDate, endDate)
 
+        if (len(touchpoints) == 0):
+            return render(request, "home/cluster-user.html", {"clusterID": clusterID, "result": "No available touchpoints"})
+
         clusterInfo = getClusterInfo(id)
         clusterGraphs = getClusterGraphs(id)
 
@@ -185,6 +188,10 @@ def getGraph(request):
     if (request.method == "POST"):
         startDate, endDate = getPeriod(request)
         touchpoints = getListTouchpoints(startDate, endDate)
+
+        if (len(touchpoints) == 0):
+            return render(request, "home/visualize-graph.html", {"result": "No available touchpoints"})
+
         type = request.POST["algorithm"]
 
         graph = processMining(touchpoints, type)
@@ -197,6 +204,8 @@ def getCluster(request):
     if (request.method == "POST"):
         startDate, endDate = getPeriod(request)
         touchpoints = getListTouchpoints(startDate, endDate)
+        if (len(touchpoints) == 0):
+            return render(request, "home/cluster-journey.html", {"result": "No available touchpoints"})
 
         numClusters = int(request.POST["numClusters"])
         algorithm = request.POST["algorithmMethod"]
@@ -410,7 +419,7 @@ def InductiveMinerPetriNet(log):
 def saveProcessGraph(gviz, startDate, endDate, type):
     filename = '/processGraph/' + str(datetime.now().timestamp()) + ".png"
     path = "home/static" + filename
-    staticPath = 'http://localhost:8000/static' + filename
+    staticPath = '/static' + filename
     pn_visualizer.save(gviz, path)
     newGraph = ProcessGraph.objects.create(runDate=datetime.now(
     ), startDate=startDate, endDate=endDate, type=type, link=staticPath)
@@ -422,7 +431,7 @@ def saveProcessGraph(gviz, startDate, endDate, type):
 def saveClusterGraph(gviz, clusterID, clusterNumber, type, clusterName=None):
     filename = '/clusterGraph/' + str(datetime.now().timestamp()) + ".png"
     path = "home/static" + filename
-    staticPath = 'http://localhost:8000/static' + filename
+    staticPath = '/static' + filename
     pn_visualizer.save(gviz, path)
     newGraph = ClusterGraph.objects.create(
         clusterID=clusterID, clusterNumber=clusterNumber, clusterName=clusterName, type=type, link=staticPath)
