@@ -185,7 +185,7 @@ function submitData() {
         console.log(importData.length);
         console.log(importData);
         const csrftoken = getCookie('csrftoken');
-        fetch('http://localhost:8000/admin/cjx/upload-file', {
+        fetch('/admin/cjx/upload-file', {
             method: 'post',
             mode: 'same-origin',
             headers: {
