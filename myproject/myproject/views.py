@@ -1,4 +1,8 @@
 from django.shortcuts import render
+from django.shortcuts import redirect
 
-def index(request):
-    return render(request, 'myproject/index.html')
+def redirect_admin(request):
+    return redirect('/admin')
+
+def handler404(request, exception):
+    return redirect('/admin')

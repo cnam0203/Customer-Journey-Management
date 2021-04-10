@@ -16,10 +16,21 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from django.urls import include
+from django.conf.urls import handler404
+from django.contrib.staticfiles.urls import static
+from django.conf import settings
 from . import views
+
+
 
 urlpatterns = [
     path('admin/cjx/', include('home.urls')),
     path('admin/', admin.site.urls),
-    path('view/', views.index)
+    path('', views.redirect_admin)
 ]
+urlpatterns += static(prefix=settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+if not settings.DEBUG:
+    handler404 = 'myproject.views.handler404'
+
+

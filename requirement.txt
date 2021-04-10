@@ -1,0 +1,6 @@
+django
+py4pm
+sklearn
+kmodes
+pandas
+numpy
